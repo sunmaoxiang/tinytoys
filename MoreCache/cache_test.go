@@ -1,16 +1,17 @@
 package MoreCache
 
 import (
+	"MoreCache/singleflight"
 	"fmt"
+	"log"
 	"reflect"
 	"testing"
-	"log"
 )
 
 func TestGetter(t *testing.T) {
-	var f Getter = GetterFunc(func(key string)([]byte, error) {
+	var f Getter = GetterFunc(func(key string) ([]byte, error) {
 		return []byte(key), nil
-	} )
+	})
 	expect := []byte("key")
 	if v, _ := f.Get("key"); !reflect.DeepEqual(v, expect) {
 		t.Errorf("callback failed")
@@ -18,19 +19,20 @@ func TestGetter(t *testing.T) {
 }
 
 // 模拟耗时的数据库
-var db = map[string]string {
-	"Tom": "630",
+var db = map[string]string{
+	"Tom":  "630",
 	"Jack": "589",
-	"Sam": "567",
+	"Sam":  "567",
 }
+
 func TestGet(t *testing.T) {
 	fmt.Println("db len:", len(db))
 	loadCounts := make(map[string]int, len(db))
-	gee := NewGroup("scores", 2 << 10,GetterFunc(
-		func(key string)([]byte, error) {
+	gee := NewGroup("scores", 2<<10, GetterFunc(
+		func(key string) ([]byte, error) {
 			log.Println("[SlowDB] search key", key)
 			if v, ok := db[key]; ok {
-				if _,ok := loadCounts[key]; !ok {
+				if _, ok := loadCounts[key]; !ok {
 					loadCounts[key] = 0
 				}
 				loadCounts[key] += 1
@@ -43,7 +45,7 @@ func TestGet(t *testing.T) {
 		if view, err := gee.Get(k); err != nil || view.String() != v {
 			t.Fatalf("failed to get value of %s", string(view.b))
 		}
-		
+
 		if _, err := gee.Get(k); err != nil || loadCounts[k] > 1 {
 			t.Fatalf("cache %s miss", k)
 		}
@@ -52,5 +54,18 @@ func TestGet(t *testing.T) {
 		t.Fatalf("the value of unkown should be empty, but %s got", view)
 	}
 
+}
 
+func TestBloom(t *testing.T) {
+	singleflight.BloomAdd("smx")
+	singleflight.BloomAdd("test")
+	if !singleflight.BloomHav("smx") {
+		t.Fatalf("should have smx")
+	}
+	if !singleflight.BloomHav("test") {
+		t.Fatalf("should have test")
+	}
+	if singleflight.BloomHav("tess") {
+		t.Fatalf("shouldn't have tess")
+	}
 }
